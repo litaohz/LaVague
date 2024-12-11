@@ -121,6 +121,9 @@ class BaseDriver(ABC):
         """Switch to the tab with the given id"""
         pass
 
+    def open_new_tab(self, url: str) -> None:
+        pass
+
     def switch_frame(self, xpath) -> None:
         """
         switch to the frame pointed at by the xpath
@@ -479,14 +482,11 @@ JS_SETUP_GET_EVENTS = """
 })();"""
 
 JS_GET_INTERACTIVES = """
-const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
-const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
-
-return (function(inViewport, foregroundOnly) {
+return (function() {
     function getInteractions(e) {
         const tag = e.tagName.toLowerCase();
-        if (!e.checkVisibility() || e.hasAttribute('disabled') || e.hasAttribute('readonly')
-          || (tag === 'input' && e.getAttribute('type') === 'hidden') || tag === 'body') {
+        if (!e.checkVisibility() || e.hasAttribute('disabled') || e.hasAttribute('readonly') || e.getAttribute('aria-hidden') === 'true'
+          || e.getAttribute('aria-disabled') === 'true' || (tag === 'input' && e.getAttribute('type') === 'hidden') || tag === 'body') {
             return [];
         }
         const rect = e.getBoundingClientRect();
@@ -523,35 +523,6 @@ return (function(inViewport, foregroundOnly) {
         if (hasEvent('scroll') || hasEvent('wheel')|| e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth) {
             //evts.push('SCROLL');
         }
-
-        if (inViewport) {
-            const rect = e.getBoundingClientRect();
-            let iframe = e.ownerDocument.defaultView.frameElement;
-            while (iframe) {
-                const iframeRect = iframe.getBoundingClientRect();
-                rect.top += iframeRect.top;
-                rect.left += iframeRect.left;
-                rect.bottom += iframeRect.top;
-                rect.right += iframeRect.left;
-                iframe = iframe.ownerDocument.defaultView.frameElement;
-            }
-            const elemCenter = {
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2
-            };
-            if (elemCenter.x < 0) return [];
-            if (elemCenter.x > windowWidth) return [];
-            if (elemCenter.y < 0) return [];
-            if (elemCenter.y > windowHeight) return [];
-            if (!foregroundOnly) return evts; // whenever to check for elements above
-            let pointContainer = document.elementFromPoint(elemCenter.x, elemCenter.y);
-            do {
-                if (pointContainer === e) return evts;
-                if (pointContainer == null) return evts;
-            } while (pointContainer = pointContainer.parentNode);
-            return [];
-        }
-
         return evts;
     }
 
@@ -589,8 +560,46 @@ return (function(inViewport, foregroundOnly) {
     }
     traverse(document.body, '/html/body');
     return results;
-})(arguments?.[0], arguments?.[1]);
+})();
 """
+
+JS_GET_INTERACTIVES_IN_VIEWPORT = (
+    """
+const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
+const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
+return Object.fromEntries(Object.entries("""
+    + js_wrap_function_call(JS_GET_INTERACTIVES)
+    + """).filter(([xpath, evts]) => {
+    const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    let iframe = element.ownerDocument.defaultView.frameElement;
+    while (iframe) {
+        const iframeRect = iframe.getBoundingClientRect();
+        rect.top += iframeRect.top;
+        rect.left += iframeRect.left;
+        rect.bottom += iframeRect.top;
+        rect.right += iframeRect.left;
+        iframe = iframe.ownerDocument.defaultView.frameElement;
+    }
+    const elemCenter = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+    };
+    if (elemCenter.x < 0) return false;
+    if (elemCenter.x > windowWidth) return false;
+    if (elemCenter.y < 0) return false;
+    if (elemCenter.y > windowHeight) return false;
+    if (arguments?.[0] !== true) return true; // whenever to check for elements above
+    let pointContainer = document.elementFromPoint(elemCenter.x, elemCenter.y);
+    do {
+        if (pointContainer === element) return true;
+        if (pointContainer == null) return true;
+    } while (pointContainer = pointContainer.parentNode);
+    return false;
+}));
+"""
+)
 
 JS_WAIT_DOM_IDLE = """
 return new Promise(resolve => {

@@ -22,6 +22,7 @@ export class ChromeExtensionDriver {
         get_possible_interactions: (msg) => this.get_possible_interactions(msg.args),
         get_tabs: () => this.get_tabs(),
         switch_tab: (msg) => this.switch_tab(msg.args),
+        open_new_tab: (msg) => this.open_new_tab(msg.args),
     };
     onTabDebugged?: (tabId: number) => void;
     onCommand?: (command: string) => void;
@@ -138,6 +139,7 @@ export class ChromeExtensionDriver {
     }
 
     handleMessage(message: any) {
+        console.log('Received message', message);
         const handler = this.handlers[message.command];
         if (handler) {
             this.onCommand?.(message.command);
@@ -304,5 +306,11 @@ export class ChromeExtensionDriver {
         const res = await dom.execCode(combinedExpression);
         const isVisible = res.result.value;
         return isVisible;
+    }
+
+    async open_new_tab(url: string) {
+        
+        await chrome.tabs.create({ url });
+        return true;
     }
 }

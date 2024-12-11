@@ -601,6 +601,17 @@ class NavigationControl(BaseEngine):
                 except Exception as e:
                     raise ValueError(f"Error while switching tab: {e}")
                 code = inspect.getsource(self.driver.switch_tab)
+            elif "OPEN_TAB" in instruction:
+                # get the url from this  string begin with " end with "
+                import re
+                pattern = r'["\'](.*?)["\']'
+                urls = re.findall(pattern, instruction)
+                if urls:
+                    url = urls[0]
+                    print("Opening tab with url: ", url)
+                    self.driver.open_new_tab(url)
+                else:
+                    raise ValueError("No url found in instruction")
             else:
                 raise ValueError(f"Unknown instruction: {instruction}")
 
